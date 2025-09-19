@@ -1,0 +1,26 @@
+{
+    "name": "backend",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "module",
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@langchain/community": "^0.3.56",
+        "@langchain/core": "^0.3.77",
+        "@langchain/google-genai": "^0.2.18",
+        "axios": "^1.12.2",
+        "body-parser": "^2.2.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.5",
+        "express": "^5.1.0",
+        "langchain": "^0.3.34"
+    }
+}
