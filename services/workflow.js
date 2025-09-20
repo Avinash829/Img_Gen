@@ -1,70 +1,85 @@
-import { createDiffusionTool } from "./tools/diffusionTool.js";
+import { openRouterImageTool } from "../services/tools/openRouterImageTool.js";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { initializeAgentExecutorWithOptions } from "langchain/agents";
 import dotenv from "dotenv";
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY in .env");
 
-if (!GEMINI_API_KEY) {
-    throw new Error("Missing GEMINI_API_KEY in .env");
-}
+const VALID_IMAGE_MODELS = [
+    "google/gemini-2.5-flash-image-preview",
+    "black-forest-labs/flux-schnell",
+];
 
-export async function runWorkflow(userPrompt) {
+export async function runWorkflow(userPrompt, model) {
     const llm = new ChatGoogleGenerativeAI({
         apiKey: GEMINI_API_KEY,
         model: "gemini-2.0-flash",
         temperature: 0.7,
     });
 
-    const diffusionTool = createDiffusionTool();
+    const agentExecutor = await initializeAgentExecutorWithOptions([], llm, {
+        agentType: "chat-zero-shot-react-description",
+        verbose: true,
+    });
 
-    const executor = await initializeAgentExecutorWithOptions(
-        [diffusionTool],
-        llm,
-        {
-            agentType: "chat-zero-shot-react-description",
-            verbose: true,
-        }
-    );
-
-    const input = `
-You are an AI assistant that helps generate images.
-Steps:
-1. Refine the user prompt into a detailed Stable Diffusion prompt with style, lighting, mood, etc.
-2. Always call the tool "stable_diffusion" using an object like:
-   { "prompt": "<the refined prompt>" }
-   (never pass a raw string).
-3. Return JSON only in this format:
+    const refineInstruction = `
+You are an assistant that converts a user's idea into a detailed image generation prompt.
+Return ONLY valid JSON with the fields:
 {
-  "refinedPrompt": "<the refined prompt you created>",
-  "image": "<the base64 data:image/png string returned by the tool>"
+  "refinedPrompt": "<detailed prompt string>",
+  "negativePrompt": "<optional negative prompt string>"
 }
-
-User idea: "${userPrompt}"
+Do not call any tools or output anything else. User idea: "${userPrompt}"
 `;
 
+    const result = await agentExecutor.invoke({ input: refineInstruction });
 
-    const result = await executor.invoke({ input });
+    const tryParseJSON = (text) => {
+        if (!text) return null;
+        try {
+            return JSON.parse(text);
+        } catch {
+            const m = text.match(/\{[\s\S]*\}/);
+            if (!m) return null;
+            try {
+                return JSON.parse(m[0]);
+            } catch {
+                return null;
+            }
+        }
+    };
 
-    let refinedPrompt = "No refined prompt";
-    let image = null;
+    const parsed = tryParseJSON(result.output);
+    let refinedPrompt = parsed?.refinedPrompt || null;
+    const negativePrompt = parsed?.negativePrompt || null;
 
-    try {
-        const parsed = JSON.parse(result.output);
-        refinedPrompt = parsed.refinedPrompt || refinedPrompt;
-        image = parsed.image || null;
-    } catch {
-        refinedPrompt = result.output || refinedPrompt;
-        image = result.intermediateSteps?.[0]?.observation || null;
+    if (!refinedPrompt) {
+        const raw = (result.output || "").trim();
+        refinedPrompt = raw.replace(/^```json\s*|```$/g, "").replace(/^"|"$/g, "").trim();
     }
+
+    if (!refinedPrompt) {
+        throw new Error("LLM failed to return a refined prompt.");
+    }
+
+    const safeModel = VALID_IMAGE_MODELS.includes(model)
+        ? model
+        : process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-image-preview";
+
+    const imageUrl = await openRouterImageTool.func({
+        prompt: refinedPrompt,
+        negative_prompt: negativePrompt || undefined,
+        model: safeModel,
+    });
 
     return {
         refinedPrompt,
-        image,
+        image: imageUrl,
         meta: {
-            steps: result.intermediateSteps?.length || 0,
-            agentFinish: result,
+            agentOutput: result.output,
+            modelUsed: safeModel,
         },
     };
 }
