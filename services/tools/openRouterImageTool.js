@@ -6,11 +6,14 @@ export const openRouterImageTool = {
     inputSchema: {
         type: "object",
         properties: {
-            prompt: { type: "string" }
+            prompt: { type: "string" },
+            negative_prompt: { type: "string" }
         },
         required: ["prompt"],
     },
-    func: async ({ prompt, model }) => {
+    func: async ({ prompt, negative_prompt }) => {
+        const defaultModel = "google/gemini-2.5-flash-image-preview"; // nanobanana
+
         try {
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
@@ -19,7 +22,7 @@ export const openRouterImageTool = {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    model,
+                    model: defaultModel,
                     messages: [
                         {
                             role: "user",
@@ -27,6 +30,7 @@ export const openRouterImageTool = {
                         },
                     ],
                     modalities: ["image", "text"],
+                    negative_prompt: negative_prompt || undefined,
                 }),
             });
 
@@ -36,13 +40,11 @@ export const openRouterImageTool = {
             }
 
             const result = await response.json();
-
             const message = result.choices?.[0]?.message;
             const images = message?.images;
 
             if (images && images.length > 0) {
-                const imageUrl = images[0]?.image_url?.url;
-                return imageUrl;
+                return images[0]?.image_url?.url;
             } else {
                 throw new Error("No images found in OpenRouter response.");
             }

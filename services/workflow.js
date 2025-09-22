@@ -7,12 +7,12 @@ dotenv.config();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY in .env");
 
+// nanobanana
 const VALID_IMAGE_MODELS = [
     "google/gemini-2.5-flash-image-preview",
-    "black-forest-labs/flux-schnell",
 ];
 
-export async function runWorkflow(userPrompt, model) {
+export async function runWorkflow(userPrompt) {
     const llm = new ChatGoogleGenerativeAI({
         apiKey: GEMINI_API_KEY,
         model: "gemini-2.0-flash",
@@ -64,22 +64,19 @@ Do not call any tools or output anything else. User idea: "${userPrompt}"
         throw new Error("LLM failed to return a refined prompt.");
     }
 
-    const safeModel = VALID_IMAGE_MODELS.includes(model)
-        ? model
-        : process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-image-preview";
 
     const imageUrl = await openRouterImageTool.func({
         prompt: refinedPrompt,
         negative_prompt: negativePrompt || undefined,
-        model: safeModel,
     });
+
 
     return {
         refinedPrompt,
         image: imageUrl,
         meta: {
             agentOutput: result.output,
-            modelUsed: safeModel,
+            modelUsed: "google/gemini-2.5-flash-image-preview",
         },
     };
 }
